@@ -85,7 +85,14 @@ nav.scrolled{padding:10px 28px;background:rgba(7,7,12,0.94)}
 .burger span{width:22px;height:2px;background:var(--text-primary);border-radius:1px;transition:all 0.3s}
 
 .hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding-top:100px;position:relative}
-.avatar-ring{width:170px;height:170px;border-radius:50%;padding:4px;background:conic-gradient(var(--neon),var(--cyber-blue),var(--cyber-purple),var(--neon),var(--cyber-blue),var(--cyber-purple),var(--neon));animation:ringRotate 4s linear infinite;position:relative;margin-bottom:36px}
+.avatar-wrap{position:relative;margin-bottom:36px}
+.avatar-ring{width:170px;height:170px;border-radius:50%;padding:4px;background:conic-gradient(var(--neon),var(--cyber-blue),var(--cyber-purple),var(--neon),var(--cyber-blue),var(--cyber-purple),var(--neon));animation:ringRotate 4s linear infinite;position:relative}
+.avatar-admin{display:none;justify-content:center;gap:8px;margin-top:10px}
+.avatar-admin.visible{display:flex}
+.avatar-admin button{padding:5px 12px;border:1px solid var(--glass-border);border-radius:8px;background:var(--glass-bg);color:var(--text-primary);cursor:pointer;font-size:0.75rem;font-family:'Rajdhani',sans-serif;transition:all 0.3s}
+.avatar-admin button:hover{border-color:var(--neon);color:var(--neon)}
+.avatar-admin .btn-del-avatar{border-color:#ff5252}
+.avatar-admin .btn-del-avatar:hover{background:#ff525222;color:#ff5252}
 .avatar-ring::before{content:'';position:absolute;inset:-8px;border-radius:50%;background:conic-gradient(var(--neon),var(--cyber-blue),var(--cyber-purple),var(--neon),var(--cyber-blue),var(--cyber-purple),var(--neon));animation:ringRotate 4s linear infinite reverse;filter:blur(20px);opacity:0.4}
 @keyframes ringRotate{to{transform:rotate(360deg)}}
 .avatar-img{width:100%;height:100%;border-radius:50%;background:var(--bg-deep);display:flex;align-items:center;justify-content:center;overflow:hidden}
@@ -266,7 +273,14 @@ footer .heart{color:var(--neon)}
 </nav>
 
 <section class="hero" id="hero">
-  <div class="avatar-ring"><div class="avatar-img" id="avatarImg"><img src="avatar.png" alt="Mr.Wildos" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=avatar-placeholder>W</span>'"></div></div>
+  <div class="avatar-wrap">
+    <div class="avatar-ring"><div class="avatar-img" id="avatarImg"><span class="avatar-placeholder">W</span></div></div>
+    <div class="avatar-admin" id="avatarAdmin">
+      <button onclick="document.getElementById('avatarInput').click()">📷 Загрузить</button>
+      <button class="btn-del-avatar" onclick="deleteAvatar()">🗑 Удалить</button>
+    </div>
+    <input type="file" id="avatarInput" accept="image/*" hidden onchange="uploadAvatar(event)">
+  </div>
   <h1 class="hero-title"><span class="accent">Mr</span><span class="purple">.</span>Wildos</h1>
   <p class="hero-tagline"><span id="typewriter"></span><span class="typing-cursor"></span></p>
   <p class="hero-sub">Создаю качественные Android-приложения с фокусом на производительность, дизайн и пользовательский опыт</p>
@@ -345,8 +359,9 @@ function setAdmin(v) {
   isAdmin = v;
   const btn = document.getElementById('adminBtn');
   const up = document.getElementById('uploadSection');
-  if (v) { btn.textContent='🟢 Выйти'; btn.classList.add('active'); up.classList.add('visible'); }
-  else { btn.textContent='🔑 Войти'; btn.classList.remove('active'); up.classList.remove('visible'); }
+  const aa = document.getElementById('avatarAdmin');
+  if (v) { btn.textContent='🟢 Выйти'; btn.classList.add('active'); up.classList.add('visible'); aa.classList.add('visible'); }
+  else { btn.textContent='🔑 Войти'; btn.classList.remove('active'); up.classList.remove('visible'); aa.classList.remove('visible'); }
   loadApps();
 }
 
@@ -369,6 +384,37 @@ async function doLogin() {
   else{closeLogin();setAdmin(true);toast('Добро пожаловать! 🎉');}
 }
 document.getElementById('loginPass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
+
+// ═══ AVATAR ═══
+const AVATAR_PATH = 'avatar.png';
+
+async function loadAvatar() {
+  const {data} = sb.storage.from('icons').getPublicUrl(AVATAR_PATH);
+  const img = new Image();
+  img.onload = () => {
+    document.getElementById('avatarImg').innerHTML = `<img src="${data.publicUrl}?t=${Date.now()}" alt="Mr.Wildos">`;
+  };
+  img.onerror = () => {};
+  img.src = data.publicUrl + '?t=' + Date.now();
+}
+
+async function uploadAvatar(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const {error} = await sb.storage.from('icons').upload(AVATAR_PATH, file, {contentType: file.type, upsert: true});
+  e.target.value = '';
+  if (error) { toast('Ошибка загрузки: ' + error.message, 'error'); return; }
+  toast('Аватарка обновлена');
+  loadAvatar();
+}
+
+async function deleteAvatar() {
+  if (!confirm('Удалить аватарку?')) return;
+  const {error} = await sb.storage.from('icons').remove([AVATAR_PATH]);
+  if (error) { toast('Ошибка: ' + error.message, 'error'); return; }
+  document.getElementById('avatarImg').innerHTML = '<span class="avatar-placeholder">W</span>';
+  toast('Аватарка удалена');
+}
 
 // ═══ LOAD APPS ═══
 async function loadApps() {
@@ -511,7 +557,7 @@ document.querySelectorAll('.reveal').forEach(el=>obs.observe(el));
 document.querySelectorAll('.skill-card').forEach((el,i)=>{el.classList.add('reveal');el.style.transitionDelay=(i*0.04)+'s';obs.observe(el)});
 
 // ═══ INIT ═══
-checkAuth(); loadApps();
+checkAuth(); loadApps(); loadAvatar();
 </script>
 </body>
 </html>
