@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mr.Wildos — Android Developer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+/*
+  ══════════════════════════════════════════════════════════════════
+  НАСТРОЙКА SUPABASE:
+
+  1. supabase.com → новый проект
+
+  2. SQL Editor → выполни:
+
+     CREATE TABLE apps (
+       id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+       name TEXT NOT NULL,
+       description TEXT DEFAULT '',
+       version TEXT DEFAULT '1.0.0',
+       package_name TEXT DEFAULT '',
+       apk_path TEXT NOT NULL,
+       apk_size TEXT DEFAULT '',
+       icon_path TEXT DEFAULT '',
+       created_at TIMESTAMPTZ DEFAULT now()
+     );
+
+     ALTER TABLE apps ENABLE ROW LEVEL SECURITY;
+
+     CREATE POLICY "Public read" ON apps FOR SELECT USING (true);
+     CREATE POLICY "Auth insert" ON apps FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+     CREATE POLICY "Auth update" ON apps FOR UPDATE USING (auth.role() = 'authenticated');
+     CREATE POLICY "Auth delete" ON apps FOR DELETE USING (auth.role() = 'authenticated');
+
+  3. Storage → бакеты "apks" и "icons" (public)
+     Policies: SELECT = всем, INSERT/UPDATE/DELETE = authenticated
+
+  4. Authentication → Add user (email + пароль)
+
+  5. Впиши SUPABASE_URL и SUPABASE_ANON_KEY внизу в JS
+  ══════════════════════════════════════════════════════════════════
+*/
+
+:root {
+  --neon:#00e676; --neon-dim:#00e67633; --neon-glow:#00e67688; --neon-bright:#69f0ae;
+  --cyber-blue:#00b0ff; --cyber-purple:#d500f9;
+  --bg-deep:#07070c; --bg-surface:#0e0e18;
+  --text-primary:#e8e8f0; --text-secondary:#7878a0;
+  --glass:rgba(14,14,26,0.8); --glass-border:rgba(0,230,118,0.12);
+  --danger:#ff5252; --danger-dim:rgba(255,82,82,0.15);
+  --radius:16px; --radius-sm:10px;
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;scrollbar-width:thin;scrollbar-color:var(--neon-dim) var(--bg-deep)}
+body{font-family:'Rajdhani',sans-serif;background:var(--bg-deep);color:var(--text-primary);overflow-x:hidden;line-height:1.6}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg-deep)}::-webkit-scrollbar-thumb{background:var(--neon-dim);border-radius:3px}
+
+#bg-canvas{position:fixed;inset:0;z-index:0;pointer-events:none}
+.grid-overlay{position:fixed;inset:0;z-index:0;pointer-events:none;background-image:linear-gradient(rgba(0,230,118,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,230,118,0.025) 1px,transparent 1px);background-size:50px 50px}
+.glow-orb{position:fixed;border-radius:50%;filter:blur(120px);pointer-events:none;z-index:0;animation:orbFloat 14s ease-in-out infinite}
+.glow-orb.g1{width:500px;height:500px;background:radial-gradient(circle,var(--neon-dim),transparent 70%);top:-120px;left:-120px}
+.glow-orb.g2{width:400px;height:400px;background:radial-gradient(circle,rgba(0,176,255,0.1),transparent 70%);bottom:-80px;right:-80px;animation-delay:-5s}
+.glow-orb.g3{width:300px;height:300px;background:radial-gradient(circle,rgba(213,0,249,0.07),transparent 70%);top:40%;left:60%;animation-delay:-9s}
+@keyframes orbFloat{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(30px,-25px) scale(1.08)}66%{transform:translate(-25px,20px) scale(0.94)}}
+
+.wrap{position:relative;z-index:1}
+section{padding:80px 24px;max-width:1100px;margin:0 auto}
+
+nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:14px 28px;backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);background:rgba(7,7,12,0.72);border-bottom:1px solid var(--glass-border);display:flex;align-items:center;justify-content:space-between;transition:all 0.4s}
+nav.scrolled{padding:10px 28px;background:rgba(7,7,12,0.94)}
+.nav-logo{font-family:'Orbitron',sans-serif;font-size:1.2rem;font-weight:900;color:var(--neon);text-shadow:0 0 20px var(--neon-glow);letter-spacing:2px;text-decoration:none}
+.nav-logo .dot{color:var(--cyber-purple)}
+.nav-links{display:flex;gap:28px;list-style:none;align-items:center}
+.nav-links a{text-decoration:none;color:var(--text-secondary);font-weight:600;font-size:0.9rem;letter-spacing:1.5px;text-transform:uppercase;position:relative;transition:color 0.3s;cursor:pointer}
+.nav-links a::after{content:'';position:absolute;bottom:-4px;left:0;width:0;height:2px;background:var(--neon);box-shadow:0 0 8px var(--neon-glow);transition:width 0.3s}
+.nav-links a:hover{color:var(--neon)}.nav-links a:hover::after{width:100%}
+.nav-admin-btn{padding:6px 16px;border-radius:20px;background:transparent;border:1px solid var(--glass-border);color:var(--text-secondary);font-family:'Rajdhani',sans-serif;font-weight:600;font-size:0.85rem;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:all 0.3s}
+.nav-admin-btn:hover{border-color:var(--neon);color:var(--neon);box-shadow:0 0 15px var(--neon-dim)}
+.nav-admin-btn.active{background:var(--neon);color:var(--bg-deep);border-color:var(--neon)}
+.burger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+.burger span{width:22px;height:2px;background:var(--text-primary);border-radius:1px;transition:all 0.3s}
+
+.hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding-top:100px;position:relative}
+.avatar-ring{width:170px;height:170px;border-radius:50%;padding:4px;background:conic-gradient(var(--neon),var(--cyber-blue),var(--cyber-purple),var(--neon),var(--cyber-blue),var(--cyber-purple),var(--neon));animation:ringRotate 4s linear infinite;position:relative;margin-bottom:36px}
+.avatar-ring::before{content:'';position:absolute;inset:-8px;border-radius:50%;background:conic-gradient(var(--neon),var(--cyber-blue),var(--cyber-purple),var(--neon),var(--cyber-blue),var(--cyber-purple),var(--neon));animation:ringRotate 4s linear infinite reverse;filter:blur(20px);opacity:0.4}
+@keyframes ringRotate{to{transform:rotate(360deg)}}
+.avatar-img{width:100%;height:100%;border-radius:50%;background:var(--bg-deep);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.avatar-img img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.avatar-placeholder{font-family:'Orbitron',sans-serif;font-size:2.8rem;color:var(--neon);text-shadow:0 0 30px var(--neon-glow)}
+
+.hero-title{font-family:'Orbitron',sans-serif;font-size:clamp(2.2rem,6vw,4.2rem);font-weight:900;line-height:1.1;margin-bottom:10px;opacity:0;animation:fadeUp 0.8s ease-out 0.2s forwards}
+.hero-title .accent{color:var(--neon);text-shadow:0 0 40px var(--neon-glow)}
+.hero-title .purple{color:var(--cyber-purple)}
+.hero-tagline{font-family:'JetBrains Mono',monospace;font-size:1rem;color:var(--text-secondary);margin-bottom:14px;opacity:0;animation:fadeUp 0.8s ease-out 0.5s forwards}
+.typing-cursor{display:inline-block;width:2px;height:1.1em;background:var(--neon);vertical-align:text-bottom;margin-left:3px;animation:blink 1s step-end infinite}
+@keyframes blink{50%{opacity:0}}
+.hero-sub{font-size:1.1rem;color:var(--text-secondary);max-width:520px;margin-bottom:36px;opacity:0;animation:fadeUp 0.8s ease-out 0.8s forwards}
+@keyframes fadeUp{from{opacity:0;transform:translateY(25px)}to{opacity:1;transform:translateY(0)}}
+.hero-stats{display:flex;gap:44px;margin-bottom:36px;opacity:0;animation:fadeUp 0.8s ease-out 1s forwards}
+.stat-item{text-align:center}
+.stat-num{font-family:'Orbitron',sans-serif;font-size:1.8rem;font-weight:900;color:var(--neon);text-shadow:0 0 20px var(--neon-dim)}
+.stat-label{font-size:0.8rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px}
+.hero-cta{display:flex;gap:14px;opacity:0;animation:fadeUp 0.8s ease-out 1.2s forwards}
+
+.btn{display:inline-flex;align-items:center;gap:8px;padding:12px 28px;border:none;border-radius:50px;font-family:'Rajdhani',sans-serif;font-size:0.95rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;text-decoration:none;transition:all 0.3s}
+.btn-primary{background:var(--neon);color:var(--bg-deep);box-shadow:0 0 25px var(--neon-dim)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 0 45px var(--neon-glow)}
+.btn-ghost{background:transparent;color:var(--text-primary);border:1px solid var(--glass-border)}
+.btn-ghost:hover{border-color:var(--neon);color:var(--neon);box-shadow:0 0 20px var(--neon-dim);transform:translateY(-2px)}
+
+.scroll-indicator{position:absolute;bottom:36px;left:50%;transform:translateX(-50%);opacity:0;animation:fadeUp 0.8s ease-out 1.6s forwards}
+.scroll-mouse{width:24px;height:38px;border:2px solid var(--text-secondary);border-radius:13px;display:flex;justify-content:center;padding-top:7px}
+.scroll-dot{width:3px;height:7px;background:var(--neon);border-radius:2px;animation:scrollDot 2s ease-in-out infinite}
+@keyframes scrollDot{0%,100%{transform:translateY(0);opacity:1}50%{transform:translateY(10px);opacity:0.2}}
+
+.section-header{text-align:center;margin-bottom:50px}
+.section-tag{font-family:'JetBrains Mono',monospace;font-size:0.78rem;color:var(--neon);letter-spacing:3px;text-transform:uppercase;margin-bottom:10px;display:block}
+.section-title{font-family:'Orbitron',sans-serif;font-size:clamp(1.7rem,4vw,2.6rem);font-weight:900;line-height:1.2}
+.section-title .hl{color:var(--neon);text-shadow:0 0 25px var(--neon-dim)}
+.section-line{width:70px;height:3px;background:linear-gradient(90deg,var(--neon),var(--cyber-blue));border-radius:2px;margin:16px auto 0;box-shadow:0 0 10px var(--neon-dim)}
+
+#apps{padding-top:100px}
+.apps-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:22px}
+
+.app-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);padding:26px;backdrop-filter:blur(12px);transition:all 0.4s cubic-bezier(0.175,0.885,0.32,1.275);position:relative;overflow:hidden;opacity:0;transform:translateY(25px);animation:cardIn 0.5s ease-out forwards}
+.app-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--neon),var(--cyber-blue),var(--cyber-purple));opacity:0;transition:opacity 0.3s}
+.app-card:hover{transform:translateY(-5px);border-color:var(--neon-glow);box-shadow:0 16px 50px rgba(0,0,0,0.4),0 0 35px var(--neon-dim)}
+.app-card:hover::before{opacity:1}
+@keyframes cardIn{to{opacity:1;transform:translateY(0)}}
+
+.app-card-head{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.app-icon{width:64px;height:64px;border-radius:15px;flex-shrink:0;background:linear-gradient(135deg,#14142a,#20203a);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 18px rgba(0,0,0,0.3);overflow:hidden}
+.app-icon img{width:100%;height:100%;object-fit:cover;border-radius:15px}
+.icon-loading{width:22px;height:22px;border:2px solid var(--glass-border);border-top-color:var(--neon);border-radius:50%;animation:spin 0.7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.fallback-icon{font-size:1.6rem;opacity:0.5}
+.app-info{flex:1;min-width:0}
+.app-name{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;line-height:1.3}
+.app-version{font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--cyber-blue);margin-top:2px}
+.app-package{font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--text-secondary);word-break:break-all;margin-top:1px}
+.app-meta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.app-meta-tag{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:rgba(0,230,118,0.06);border:1px solid rgba(0,230,118,0.1);border-radius:20px;font-size:0.72rem;color:var(--neon-bright);font-family:'JetBrains Mono',monospace}
+.app-desc{font-size:0.9rem;color:var(--text-secondary);line-height:1.5;margin-bottom:18px}
+
+.btn-download{width:100%;padding:11px 18px;border-radius:11px;background:linear-gradient(135deg,var(--neon),#00c853);color:var(--bg-deep);font-family:'Rajdhani',sans-serif;font-weight:700;font-size:0.92rem;text-transform:uppercase;letter-spacing:1.5px;border:none;cursor:pointer;text-decoration:none;text-align:center;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:all 0.3s;overflow:hidden}
+.btn-download:hover{box-shadow:0 0 30px var(--neon-glow);transform:translateY(-2px)}
+
+.app-admin-actions{display:flex;gap:8px;margin-top:10px}
+.btn-delete{flex:1;padding:8px;border-radius:8px;background:var(--danger-dim);border:1px solid rgba(255,82,82,0.2);color:var(--danger);cursor:pointer;font-family:'Rajdhani',sans-serif;font-weight:600;font-size:0.85rem;transition:all 0.3s;text-transform:uppercase;letter-spacing:1px}
+.btn-delete:hover{background:rgba(255,82,82,0.25);border-color:var(--danger)}
+
+.empty-state{grid-column:1/-1;text-align:center;padding:50px;color:var(--text-secondary)}
+.empty-state .empty-icon{font-size:2.8rem;margin-bottom:14px;display:block;opacity:0.4}
+
+.upload-section{margin-bottom:40px;display:none}
+.upload-section.visible{display:block}
+.upload-zone{border:2px dashed var(--glass-border);border-radius:var(--radius);padding:40px;text-align:center;cursor:pointer;transition:all 0.4s;background:var(--glass);backdrop-filter:blur(12px);position:relative;overflow:hidden}
+.upload-zone::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at var(--mx,50%) var(--my,50%),var(--neon-dim),transparent 60%);opacity:0;transition:opacity 0.3s}
+.upload-zone:hover{border-color:var(--neon)}.upload-zone:hover::before{opacity:1}
+.upload-zone.dragover{border-color:var(--neon);background:rgba(0,230,118,0.04)}
+.upload-icon{font-size:2.6rem;margin-bottom:12px;display:block}
+.upload-text{font-size:1.1rem;font-weight:600;margin-bottom:6px}
+.upload-sub{font-size:0.85rem;color:var(--text-secondary)}
+
+.upload-form{display:none;margin-top:24px;padding:24px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);backdrop-filter:blur(12px)}
+.upload-form.visible{display:block}
+.form-row{margin-bottom:16px}
+.form-label{display:block;font-family:'JetBrains Mono',monospace;font-size:0.78rem;color:var(--neon);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
+.form-input{width:100%;padding:10px 14px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid var(--glass-border);color:var(--text-primary);font-family:'Rajdhani',sans-serif;font-size:1rem;outline:none;transition:border-color 0.3s}
+.form-input:focus{border-color:var(--neon);box-shadow:0 0 12px var(--neon-dim)}
+.form-input::placeholder{color:var(--text-secondary)}
+textarea.form-input{min-height:80px;resize:vertical}
+
+.upload-progress{display:none;margin-top:16px;padding:16px;background:rgba(0,230,118,0.05);border:1px solid var(--glass-border);border-radius:10px}
+.upload-progress.visible{display:block}
+.progress-bar{width:100%;height:6px;background:rgba(255,255,255,0.05);border-radius:3px;overflow:hidden;margin-bottom:8px}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--neon),var(--cyber-blue));border-radius:3px;width:0%;transition:width 0.3s}
+.progress-text{font-size:0.85rem;color:var(--text-secondary);text-align:center}
+
+.btn-submit{width:100%;padding:12px;border-radius:10px;background:linear-gradient(135deg,var(--neon),#00c853);color:var(--bg-deep);font-family:'Rajdhani',sans-serif;font-weight:700;font-size:1rem;text-transform:uppercase;letter-spacing:1.5px;border:none;cursor:pointer;transition:all 0.3s}
+.btn-submit:hover{box-shadow:0 0 30px var(--neon-glow)}
+.btn-submit:disabled{opacity:0.4;cursor:not-allowed}
+
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(10px);z-index:200;display:none;align-items:center;justify-content:center}
+.modal-overlay.visible{display:flex}
+.modal{background:var(--bg-surface);border:1px solid var(--glass-border);border-radius:var(--radius);padding:40px;width:90%;max-width:380px;position:relative}
+.modal-title{font-family:'Orbitron',sans-serif;font-size:1.3rem;font-weight:900;text-align:center;margin-bottom:24px;color:var(--neon)}
+.modal-close{position:absolute;top:14px;right:14px;background:none;border:none;color:var(--text-secondary);font-size:1.2rem;cursor:pointer;transition:color 0.3s}
+.modal-close:hover{color:var(--danger)}
+.modal-error{display:none;padding:10px;border-radius:8px;background:var(--danger-dim);color:var(--danger);font-size:0.85rem;text-align:center;margin-bottom:14px}
+.modal-error.visible{display:block}
+
+.skills-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:14px}
+.skill-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);padding:22px 14px;text-align:center;backdrop-filter:blur(10px);transition:all 0.3s}
+.skill-card:hover{transform:translateY(-3px);border-color:var(--neon);box-shadow:0 8px 30px rgba(0,0,0,0.3),0 0 18px var(--neon-dim)}
+.skill-icon{font-size:2rem;margin-bottom:8px;display:block}
+.skill-name{font-weight:700;font-size:0.85rem;letter-spacing:0.5px}
+.skill-bar{width:100%;height:3px;background:rgba(255,255,255,0.04);border-radius:2px;margin-top:8px;overflow:hidden}
+.skill-bar-fill{height:100%;background:linear-gradient(90deg,var(--neon),var(--cyber-blue));border-radius:2px;box-shadow:0 0 6px var(--neon-dim);width:0%;transition:width 1.5s cubic-bezier(0.4,0,0.2,1)}
+
+.contact-links{display:flex;justify-content:center;gap:18px;flex-wrap:wrap}
+.contact-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);padding:22px 32px;backdrop-filter:blur(12px);text-decoration:none;color:var(--text-primary);display:flex;align-items:center;gap:12px;transition:all 0.3s}
+.contact-card:hover{border-color:var(--neon);transform:translateY(-3px);box-shadow:0 10px 35px rgba(0,0,0,0.3),0 0 18px var(--neon-dim)}
+.contact-icon{font-size:1.5rem}.contact-label{font-weight:600;font-size:0.95rem;letter-spacing:0.5px}
+
+footer{text-align:center;padding:36px 24px;border-top:1px solid var(--glass-border);color:var(--text-secondary);font-size:0.82rem;position:relative;z-index:1}
+footer .heart{color:var(--neon)}
+
+.reveal{opacity:0;transform:translateY(35px);transition:opacity 0.7s ease-out,transform 0.7s ease-out}
+.reveal.visible{opacity:1;transform:translateY(0)}
+
+.toast-container{position:fixed;bottom:24px;right:24px;z-index:300;display:flex;flex-direction:column;gap:10px}
+.toast{padding:14px 22px;border-radius:10px;background:var(--bg-surface);border:1px solid var(--glass-border);backdrop-filter:blur(12px);font-size:0.9rem;color:var(--text-primary);box-shadow:0 8px 30px rgba(0,0,0,0.4);animation:toastIn 0.4s ease-out forwards;max-width:340px}
+.toast.success{border-color:var(--neon)}.toast.error{border-color:var(--danger)}
+@keyframes toastIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+
+.glitch{position:relative;display:inline-block}
+.glitch:hover{animation:glitch 0.4s ease-in-out}
+@keyframes glitch{0%,100%{transform:translate(0)}20%{transform:translate(-2px,1px)}40%{transform:translate(2px,-1px)}60%{transform:translate(-1px,-1px)}80%{transform:translate(1px,1px)}}
+
+@media(max-width:768px){
+  .burger{display:flex}
+  .nav-links{position:fixed;top:0;right:-100%;width:72%;height:100vh;background:rgba(7,7,12,0.97);backdrop-filter:blur(20px);flex-direction:column;padding:90px 36px 36px;gap:20px;transition:right 0.4s cubic-bezier(0.4,0,0.2,1);border-left:1px solid var(--glass-border)}
+  .nav-links.open{right:0}
+  .hero-stats{gap:20px;flex-wrap:wrap;justify-content:center}
+  .hero-cta{flex-direction:column;align-items:center}
+  .apps-grid{grid-template-columns:1fr}
+  .skills-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}
+  .contact-links{flex-direction:column;align-items:center}
+  section{padding:50px 16px}
+}
+</style>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+<div class="grid-overlay"></div>
+<div class="glow-orb g1"></div><div class="glow-orb g2"></div><div class="glow-orb g3"></div>
+<div class="toast-container" id="toasts"></div>
+
+<div class="modal-overlay" id="loginModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeLogin()">✕</button>
+    <div class="modal-title">🔐 Админ-вход</div>
+    <div class="modal-error" id="loginError"></div>
+    <div class="form-row"><label class="form-label">Email</label><input class="form-input" id="loginEmail" type="email" placeholder="admin@example.com"></div>
+    <div class="form-row"><label class="form-label">Пароль</label><input class="form-input" id="loginPass" type="password" placeholder="••••••••"></div>
+    <button class="btn-submit" onclick="doLogin()" id="loginBtn">Войти</button>
+  </div>
+</div>
+
+<div class="wrap">
+<nav id="navbar">
+  <a href="#" class="nav-logo glitch">Mr<span class="dot">.</span>Wildos</a>
+  <ul class="nav-links" id="navLinks">
+    <li><a href="#hero" onclick="closeNav()">Главная</a></li>
+    <li><a href="#apps" onclick="closeNav()">Приложения</a></li>
+    <li><a href="#skills" onclick="closeNav()">Навыки</a></li>
+    <li><a href="#contact" onclick="closeNav()">Контакты</a></li>
+    <li><button class="nav-admin-btn" id="adminBtn" onclick="onAdminClick()">🔑 Войти</button></li>
+  </ul>
+  <button class="burger" onclick="toggleNav()"><span></span><span></span><span></span></button>
+</nav>
+
+<section class="hero" id="hero">
+  <div class="avatar-ring"><div class="avatar-img" id="avatarImg"><img src="avatar.png" alt="Mr.Wildos" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=avatar-placeholder>W</span>'"></div></div>
+  <h1 class="hero-title"><span class="accent">Mr</span><span class="purple">.</span>Wildos</h1>
+  <p class="hero-tagline"><span id="typewriter"></span><span class="typing-cursor"></span></p>
+  <p class="hero-sub">Создаю качественные Android-приложения с фокусом на производительность, дизайн и пользовательский опыт</p>
+  <div class="hero-stats">
+    <div class="stat-item"><div class="stat-num" id="statApps">—</div><div class="stat-label">Приложений</div></div>
+    <div class="stat-item"><div class="stat-num">Kotlin</div><div class="stat-label">Основной язык</div></div>
+    <div class="stat-item"><div class="stat-num">Android</div><div class="stat-label">Платформа</div></div>
+  </div>
+  <div class="hero-cta"><a href="#apps" class="btn btn-primary">🚀 Приложения</a><a href="#contact" class="btn btn-ghost">💬 Связаться</a></div>
+  <div class="scroll-indicator"><div class="scroll-mouse"><div class="scroll-dot"></div></div></div>
+</section>
+
+<section id="apps">
+  <div class="section-header reveal"><span class="section-tag">// portfolio</span><h2 class="section-title">Мои <span class="hl">приложения</span></h2><div class="section-line"></div></div>
+
+  <div class="upload-section" id="uploadSection">
+    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('apkInput').click()">
+      <span class="upload-icon">📦</span>
+      <div class="upload-text">Перетащите APK или нажмите</div>
+      <div class="upload-sub">Иконка извлечётся автоматически</div>
+      <input type="file" id="apkInput" accept=".apk" style="display:none" onchange="onApkSelected(event)">
+    </div>
+    <div class="upload-form" id="uploadForm">
+      <div class="form-row"><label class="form-label">Название</label><input class="form-input" id="appName" placeholder="EasyPDF Scanner"></div>
+      <div class="form-row"><label class="form-label">Описание</label><textarea class="form-input" id="appDesc" placeholder="Описание..."></textarea></div>
+      <div class="form-row"><label class="form-label">Версия</label><input class="form-input" id="appVersion" placeholder="1.0.0"></div>
+      <div class="form-row" style="font-size:0.85rem;color:var(--text-secondary)"><span>📎 <strong id="apkFileName">—</strong></span><span style="margin-left:12px">📁 <strong id="apkFileSize">—</strong></span></div>
+      <div class="upload-progress" id="uploadProgress"><div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div><div class="progress-text" id="progressText">Загрузка...</div></div>
+      <button class="btn-submit" id="btnPublish" onclick="publishApp()">🚀 Опубликовать</button>
+    </div>
+  </div>
+
+  <div class="apps-grid" id="appsGrid"></div>
+</section>
+
+<section id="skills">
+  <div class="section-header reveal"><span class="section-tag">// tech stack</span><h2 class="section-title">Мой <span class="hl">стек</span></h2><div class="section-line"></div></div>
+  <div class="skills-grid reveal" id="skillsGrid"></div>
+</section>
+
+<section id="contact">
+  <div class="section-header reveal"><span class="section-tag">// connect</span><h2 class="section-title">Связаться <span class="hl">со мной</span></h2><div class="section-line"></div></div>
+  <div class="contact-links reveal">
+    <a href="https://github.com/MrWildos" target="_blank" class="contact-card"><span class="contact-icon">🐙</span><span class="contact-label">GitHub</span></a>
+    <a href="https://t.me/MrWildos" target="_blank" class="contact-card"><span class="contact-icon">✈️</span><span class="contact-label">Telegram</span></a>
+    <a href="mailto:mrwildos@example.com" class="contact-card"><span class="contact-icon">📧</span><span class="contact-label">Email</span></a>
+  </div>
+</section>
+</div>
+
+<footer><p>© 2026 Mr.Wildos — Built with <span class="heart">♥</span> & Kotlin</p></footer>
+
+<script>
+// ═══════════════════════════════════════════
+// ▼▼▼  ВПИШИ СВОИ КЛЮЧИ  ▼▼▼
+const SUPABASE_URL = 'https://ntnwdpltskndhgqquoyi.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_AUGBI7q5E98BW16_w1znzw_DbVr2FLo';
+// ▲▲▲  КОНЕЦ КЛЮЧЕЙ  ▲▲▲
+// ═══════════════════════════════════════════
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let isAdmin = false, currentApkFile = null, currentIconBlob = null, currentPkg = '';
+
+function toast(msg, type='success') {
+  const t = document.createElement('div'); t.className = `toast ${type}`; t.textContent = msg;
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(() => { t.style.opacity='0'; t.style.transform='translateX(40px)'; setTimeout(()=>t.remove(),400); }, 3500);
+}
+
+function esc(s) { if(!s) return ''; const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+// ═══ AUTH ═══
+async function checkAuth() { const{data:{session}}=await sb.auth.getSession(); setAdmin(!!session); }
+
+function setAdmin(v) {
+  isAdmin = v;
+  const btn = document.getElementById('adminBtn');
+  const up = document.getElementById('uploadSection');
+  if (v) { btn.textContent='🟢 Выйти'; btn.classList.add('active'); up.classList.add('visible'); }
+  else { btn.textContent='🔑 Войти'; btn.classList.remove('active'); up.classList.remove('visible'); }
+  loadApps();
+}
+
+function onAdminClick() {
+  if (isAdmin) { sb.auth.signOut(); setAdmin(false); toast('Вы вышли'); }
+  else { document.getElementById('loginModal').classList.add('visible'); document.getElementById('loginEmail').focus(); }
+  closeNav();
+}
+
+function closeLogin() { document.getElementById('loginModal').classList.remove('visible'); document.getElementById('loginError').classList.remove('visible'); }
+
+async function doLogin() {
+  const email=document.getElementById('loginEmail').value.trim(), pass=document.getElementById('loginPass').value;
+  const err=document.getElementById('loginError'), btn=document.getElementById('loginBtn');
+  if(!email||!pass){err.textContent='Заполните оба поля';err.classList.add('visible');return;}
+  btn.disabled=true; btn.textContent='Вхожу...';
+  const{error}=await sb.auth.signInWithPassword({email,password:pass});
+  btn.disabled=false; btn.textContent='Войти';
+  if(error){err.textContent='Неверный email или пароль';err.classList.add('visible');}
+  else{closeLogin();setAdmin(true);toast('Добро пожаловать! 🎉');}
+}
+document.getElementById('loginPass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
+
+// ═══ LOAD APPS ═══
+async function loadApps() {
+  const grid=document.getElementById('appsGrid');
+  grid.innerHTML='<div class="empty-state"><div class="icon-loading" style="width:32px;height:32px;border:2px solid var(--glass-border);border-top-color:var(--neon);border-radius:50%;animation:spin 0.7s linear infinite;margin:0 auto"></div><p style="margin-top:14px">Загрузка...</p></div>';
+
+  const{data:apps,error}=await sb.from('apps').select('*').order('created_at',{ascending:false});
+
+  if(error){grid.innerHTML='<div class="empty-state"><span class="empty-icon">⚠️</span><p>Ошибка. Проверь ключи Supabase.</p></div>';document.getElementById('statApps').textContent='0';return;}
+
+  document.getElementById('statApps').textContent=apps.length||'0';
+
+  if(!apps.length){grid.innerHTML='<div class="empty-state"><span class="empty-icon">🤖</span><p>Скоро тут появятся приложения!</p></div>';return;}
+
+  grid.innerHTML='';
+  apps.forEach((app,i) => {
+    const card=document.createElement('div'); card.className='app-card'; card.style.animationDelay=(i*0.1)+'s';
+    const apkUrl=sb.storage.from('apks').getPublicUrl(app.apk_path).data.publicUrl;
+    const iconUrl=app.icon_path?sb.storage.from('icons').getPublicUrl(app.icon_path).data.publicUrl:'';
+
+    card.innerHTML=`
+      <div class="app-card-head">
+        <div class="app-icon">${iconUrl?`<img src="${iconUrl}" alt="icon">`:'<span class="fallback-icon">📱</span>'}</div>
+        <div class="app-info">
+          <div class="app-name">${esc(app.name)}</div>
+          ${app.version?`<div class="app-version">v${esc(app.version)}</div>`:''}
+          ${app.package_name?`<div class="app-package">${esc(app.package_name)}</div>`:''}
+        </div>
+      </div>
+      <div class="app-meta">
+        ${app.apk_size?`<span class="app-meta-tag">📁 ${esc(app.apk_size)}</span>`:''}
+        <span class="app-meta-tag">📅 ${new Date(app.created_at).toLocaleDateString('ru-RU')}</span>
+      </div>
+      ${app.description?`<div class="app-desc">${esc(app.description)}</div>`:''}
+      <a href="${apkUrl}" download class="btn-download">⬇ Скачать APK</a>
+      ${isAdmin?`<div class="app-admin-actions"><button class="btn-delete" onclick="deleteApp('${app.id}','${app.apk_path}','${app.icon_path||''}')">🗑 Удалить</button></div>`:''}
+    `;
+    grid.appendChild(card);
+  });
+}
+
+async function deleteApp(id,apkPath,iconPath) {
+  if(!confirm('Удалить приложение?'))return;
+  await sb.storage.from('apks').remove([apkPath]);
+  if(iconPath) await sb.storage.from('icons').remove([iconPath]);
+  await sb.from('apps').delete().eq('id',id);
+  toast('Удалено'); loadApps();
+}
+
+// ═══ UPLOAD ═══
+const uz=document.getElementById('uploadZone');
+uz.addEventListener('mousemove',e=>{const r=uz.getBoundingClientRect();uz.style.setProperty('--mx',((e.clientX-r.left)/r.width*100)+'%');uz.style.setProperty('--my',((e.clientY-r.top)/r.height*100)+'%');});
+uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('dragover')});
+uz.addEventListener('dragleave',()=>uz.classList.remove('dragover'));
+uz.addEventListener('drop',e=>{e.preventDefault();uz.classList.remove('dragover');const f=Array.from(e.dataTransfer.files).find(f=>f.name.endsWith('.apk'));if(f)processApk(f);});
+function onApkSelected(e){const f=e.target.files[0];if(f)processApk(f);e.target.value='';}
+
+async function processApk(file) {
+  currentApkFile=file; currentIconBlob=null; currentPkg='';
+  document.getElementById('apkFileName').textContent=file.name;
+  document.getElementById('apkFileSize').textContent=(file.size/(1024*1024)).toFixed(1)+' MB';
+  document.getElementById('uploadForm').classList.add('visible');
+  document.getElementById('appName').value=file.name.replace('.apk','').replace(/[-_]/g,' ');
+  document.getElementById('appVersion').value='1.0.0';
+
+  try {
+    const zip=await JSZip.loadAsync(file);
+    try {
+      const m=await zip.file('AndroidManifest.xml').async('arraybuffer');
+      const b=new Uint8Array(m); let s='';
+      for(let i=0;i<b.length;i++){const c=b[i];if(c>=32&&c<127)s+=String.fromCharCode(c);else{if(s.length>5&&/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){2,}$/i.test(s)&&!s.startsWith('android.')&&!s.startsWith('com.android.')&&!s.startsWith('com.google.android')&&!s.startsWith('org.apache.')){if(!currentPkg||s.length<currentPkg.length)currentPkg=s;}s='';}}
+    }catch(e){}
+
+    const ip=[];
+    zip.forEach((path,entry)=>{if(!entry.dir&&/\.(png|webp|jpg|jpeg)$/i.test(path)){const l=path.toLowerCase();if(l.includes('mipmap')||l.includes('drawable')){let p=0;if(l.includes('xxxhdpi'))p=10;else if(l.includes('xxhdpi'))p=9;else if(l.includes('xhdpi'))p=8;else if(l.includes('hdpi'))p=7;if(l.includes('ic_launcher')&&!l.includes('_round')&&!l.includes('foreground')&&!l.includes('background')&&!l.includes('_mono'))p+=20;else if(l.includes('ic_launcher_round'))p+=15;else if(l.includes('ic_launcher'))p+=10;if(l.includes('mipmap'))p+=5;ip.push({path,priority:p});}}});
+    ip.sort((a,b)=>b.priority-a.priority);
+    if(ip.length>0)currentIconBlob=await zip.file(ip[0].path).async('blob');
+    toast('APK распознан'+(currentPkg?' — '+currentPkg:''));
+  }catch(e){console.warn(e);toast('APK не удалось разобрать','error');}
+}
+
+async function publishApp() {
+  if(!currentApkFile)return;
+  const name=document.getElementById('appName').value.trim();
+  const desc=document.getElementById('appDesc').value.trim();
+  const ver=document.getElementById('appVersion').value.trim();
+  if(!name){toast('Введите название','error');return;}
+
+  const btn=document.getElementById('btnPublish'), prog=document.getElementById('uploadProgress');
+  const fill=document.getElementById('progressFill'), txt=document.getElementById('progressText');
+  btn.disabled=true; prog.classList.add('visible');
+
+  try {
+    txt.textContent='Загрузка APK...'; fill.style.width='20%';
+    const ts=Date.now(), apkPath=`${ts}_${currentApkFile.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+    const{error:e1}=await sb.storage.from('apks').upload(apkPath,currentApkFile,{upsert:true});
+    if(e1)throw e1; fill.style.width='60%';
+
+    let iconPath='';
+    if(currentIconBlob){txt.textContent='Иконка...';iconPath=`${ts}_icon.png`;
+      const{error:e2}=await sb.storage.from('icons').upload(iconPath,currentIconBlob,{contentType:'image/png',upsert:true});
+      if(e2)console.warn(e2);
+    } fill.style.width='80%';
+
+    txt.textContent='Сохранение...';
+    const{error:e3}=await sb.from('apps').insert({name,description:desc,version:ver,package_name:currentPkg,apk_path:apkPath,apk_size:(currentApkFile.size/(1024*1024)).toFixed(1)+' MB',icon_path:iconPath});
+    if(e3)throw e3;
+
+    fill.style.width='100%'; txt.textContent='Готово! ✅'; toast('Опубликовано! 🎉');
+    setTimeout(()=>{document.getElementById('uploadForm').classList.remove('visible');prog.classList.remove('visible');fill.style.width='0%';currentApkFile=null;currentIconBlob=null;currentPkg='';loadApps();},1200);
+  }catch(e){console.error(e);toast('Ошибка: '+(e.message||''),'error');txt.textContent='Ошибка ❌';}
+  btn.disabled=false;
+}
+
+// ═══ PARTICLES ═══
+const cvs=document.getElementById('bg-canvas'),cx=cvs.getContext('2d');let ps=[],mo={x:-500,y:-500};
+function rCvs(){cvs.width=innerWidth;cvs.height=innerHeight}rCvs();addEventListener('resize',rCvs);
+document.addEventListener('mousemove',e=>{mo.x=e.clientX;mo.y=e.clientY});
+class Pt{constructor(){this.r()}r(){this.x=Math.random()*cvs.width;this.y=Math.random()*cvs.height;this.s=Math.random()*1.5+0.3;this.vx=(Math.random()-0.5)*0.35;this.vy=(Math.random()-0.5)*0.35;this.o=Math.random()*0.4+0.1}u(){this.x+=this.vx;this.y+=this.vy;const dx=mo.x-this.x,dy=mo.y-this.y,d=Math.sqrt(dx*dx+dy*dy);if(d<140){const f=(140-d)/140;this.x-=dx*f*0.012;this.y-=dy*f*0.012}if(this.x<0||this.x>cvs.width||this.y<0||this.y>cvs.height)this.r()}d(){cx.beginPath();cx.arc(this.x,this.y,this.s,0,Math.PI*2);cx.fillStyle=`rgba(0,230,118,${this.o})`;cx.fill()}}
+for(let i=0;i<70;i++)ps.push(new Pt);
+function anim(){cx.clearRect(0,0,cvs.width,cvs.height);for(let i=0;i<ps.length;i++){ps[i].u();ps[i].d();for(let j=i+1;j<ps.length;j++){const dx=ps[i].x-ps[j].x,dy=ps[i].y-ps[j].y,d=Math.sqrt(dx*dx+dy*dy);if(d<110){cx.beginPath();cx.moveTo(ps[i].x,ps[i].y);cx.lineTo(ps[j].x,ps[j].y);cx.strokeStyle=`rgba(0,230,118,${0.05*(1-d/110)})`;cx.lineWidth=0.5;cx.stroke()}}}requestAnimationFrame(anim)}anim();
+
+// ═══ NAV ═══
+addEventListener('scroll',()=>{document.getElementById('navbar').classList.toggle('scrolled',scrollY>50)});
+function toggleNav(){document.getElementById('navLinks').classList.toggle('open')}
+function closeNav(){document.getElementById('navLinks').classList.remove('open')}
+document.querySelectorAll('a[href^="#"]').forEach(a=>{a.addEventListener('click',e=>{e.preventDefault();const t=document.querySelector(a.getAttribute('href'));if(t)t.scrollIntoView({behavior:'smooth',block:'start'})})});
+
+// ═══ TYPEWRITER ═══
+const phr=['Android Developer','Kotlin Enthusiast','UI/UX Designer','Open Source Contributor'];
+let pi=0,ci2=0,dl=false;const tEl=document.getElementById('typewriter');
+function tw(){const c=phr[pi];if(!dl){tEl.textContent=c.substring(0,ci2+1);ci2++;if(ci2===c.length){setTimeout(()=>{dl=true;tw()},2000);return}setTimeout(tw,80)}else{tEl.textContent=c.substring(0,ci2);ci2--;if(ci2<0){dl=false;pi=(pi+1)%phr.length;ci2=0;setTimeout(tw,500);return}setTimeout(tw,40)}}tw();
+
+// ═══ SKILLS ═══
+[{i:'🤖',n:'Kotlin',l:95},{i:'☕',n:'Java',l:85},{i:'📱',n:'Android SDK',l:92},{i:'🏗️',n:'Jetpack Compose',l:88},{i:'🔧',n:'Gradle',l:80},{i:'🗄️',n:'Room DB',l:85},{i:'🌐',n:'Retrofit',l:90},{i:'🎨',n:'Material 3',l:87},{i:'🧪',n:'Testing',l:75},{i:'📊',n:'Firebase',l:82},{i:'🔀',n:'Git',l:88},{i:'🧩',n:'Coroutines',l:90}].forEach(s=>{const d=document.createElement('div');d.className='skill-card';d.innerHTML=`<span class="skill-icon">${s.i}</span><span class="skill-name">${s.n}</span><div class="skill-bar"><div class="skill-bar-fill" data-level="${s.l}"></div></div>`;document.getElementById('skillsGrid').appendChild(d)});
+
+// ═══ REVEAL ═══
+const obs=new IntersectionObserver(entries=>{entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('visible');e.target.querySelectorAll('.skill-bar-fill').forEach(b=>{setTimeout(()=>{b.style.width=b.dataset.level+'%'},200)})}})},{threshold:0.15});
+document.querySelectorAll('.reveal').forEach(el=>obs.observe(el));
+document.querySelectorAll('.skill-card').forEach((el,i)=>{el.classList.add('reveal');el.style.transitionDelay=(i*0.04)+'s';obs.observe(el)});
+
+// ═══ INIT ═══
+checkAuth(); loadApps();
+</script>
+</body>
+</html>
